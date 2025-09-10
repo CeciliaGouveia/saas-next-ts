@@ -65,3 +65,17 @@ export const getAllCompanions = async ({
 
   return companions
 }
+
+export const getCompanion = async (id: string) => {
+  // criando um cliente do nosso DB, para que possamos fazer todas as operações no DB
+  const supabase = createSupabaseClient()
+
+  const { data, error } = await supabase
+    .from("companions")
+    .select()
+    .eq("id", id)
+
+  if (error) return console.log(error)
+
+  return data[0]
+}
