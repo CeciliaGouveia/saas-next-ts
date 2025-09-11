@@ -1,10 +1,11 @@
 "use client"
-import { cn, getSubjectColor } from "@/lib/utils"
+import { cn, configureAssistant, getSubjectColor } from "@/lib/utils"
 import { vapi } from "@/lib/vapi.sdk"
 import Lottie, { LottieRefCurrentProps } from "lottie-react"
 import Image from "next/image"
 import React from "react"
 import soundwaves from "@/config/constants/soundwaves.json"
+import { addToSessionHistory } from "@/lib/actions/companions.actions"
 
 enum CallStatus {
   INACTIVE = "INACTIVE",
@@ -28,6 +29,7 @@ const CompanionComponent = ({
   )
   const [isSpeaking, setIsSpeaking] = React.useState(false)
   const [isMuted, setIsMuted] = React.useState(false)
+  const [messages, setMessages] = React.useState<SavedMessage[]>([])
 
   const lottieRef = React.useRef<LottieRefCurrentProps>(null)
 
@@ -43,8 +45,16 @@ const CompanionComponent = ({
 
   React.useEffect(() => {
     const onCallStart = () => setCallStatus(CallStatus.ACTIVE)
-    const onCallEnd = () => setCallStatus(CallStatus.FINISHED)
-    const onMessage = () => {}
+    const onCallEnd = () => {
+      setCallStatus(CallStatus.FINISHED)
+      addToSessionHistory(companionId)
+    }
+    const onMessage = (message: Message) => {
+      if (message.type === "transcript" && message.transcriptType === "final") {
+        const newMessage = { role: message.role, content: message.transcript }
+        setMessages((prev) => [newMessage, ...prev])
+      }
+    }
     const onSpeechStart = () => {
       setIsSpeaking(true)
     }
@@ -87,9 +97,15 @@ const CompanionComponent = ({
       clientMessages: ["transcript"],
       serverMessages: [],
     }
+
+    // @ts-expect-error - lib não aceita array vazio mas é necessário aqui
+    vapi.start(configureAssistant(voice, style), assistantOverrides)
   }
 
-  const handleDisconnect = () => {}
+  const handleDisconnect = () => {
+    setCallStatus(CallStatus.FINISHED)
+    vapi.stop()
+  }
 
   return (
     <section className="flex flex-col h-[70vh]">
@@ -146,7 +162,11 @@ const CompanionComponent = ({
             />
             <p className="font-bold text-2xl">{userName}</p>
           </div>
-          <button className="btn-mic" onClick={toggleMicrophone}>
+          <button
+            className="btn-mic"
+            onClick={toggleMicrophone}
+            disabled={callStatus !== CallStatus.ACTIVE}
+          >
             <Image
               src={isMuted ? "/icons/mic-off.svg" : "/icons/mic-on.svg"}
               alt="mic"
@@ -176,7 +196,24 @@ const CompanionComponent = ({
         </div>
       </section>
       <section className="transcript">
-        <div className="transcript-message no-scrollbar">MESSAGES</div>
+        <div className="transcript-message no-scrollbar">
+          {messages.map((message, index) => {
+            if (message.role === "assistant") {
+              return (
+                <p key={index} className="max-sm:text-sm">
+                  {name.split(" ")[0].replace("/[.,]/g, ", "")} :
+                  {message.content}
+                </p>
+              )
+            } else {
+              return (
+                <p key={index} className="text-primary max-sm:text-sm">
+                  {userName} : {message.content}
+                </p>
+              )
+            }
+          })}
+        </div>
         <div className="transcript-fade" />
       </section>
     </section>
